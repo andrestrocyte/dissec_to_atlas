@@ -36,6 +36,8 @@ def project(tmp_path: Path) -> Path:
 
 def test_synthetic_plane_and_polygon_summary():
     atlas = SyntheticAtlasProvider()
+    assert atlas.info()["version"] == "1"
+    assert len(atlas.info()["metadata_sha256"]) == 64
     plane = atlas.plane(40, 0, 0, 320, 240, "both")
     assert plane.reference.shape == (240, 320)
     assert plane.annotation.shape == (240, 320)

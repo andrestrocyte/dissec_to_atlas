@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -58,11 +59,19 @@ class AtlasProvider:
         }
 
     def info(self) -> dict:
+        atlas = getattr(self, "atlas", None)
+        metadata = getattr(atlas, "metadata", {})
+        metadata_digest = hashlib.sha256(
+            json.dumps(metadata, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
         return {
             "id": self.atlas_id,
+            "version": metadata.get("version"),
+            "citation": metadata.get("citation"),
+            "metadata_sha256": metadata_digest,
             "shape": self.shape,
             "resolution_um": self.resolution,
-            "orientation": getattr(self.atlas, "orientation", "asr"),
+            "orientation": getattr(atlas, "orientation", "asr"),
             "coordinate_order": ["anterior_posterior", "dorsal_ventral", "left_right"],
         }
 
@@ -151,7 +160,7 @@ class SyntheticAtlasProvider(AtlasProvider):
 
     def info(self) -> dict:
         base = super().info()
-        base["synthetic"] = True
+        base.update({"synthetic": True, "version": "1", "citation": "Synthetic test data"})
         return base
 
 

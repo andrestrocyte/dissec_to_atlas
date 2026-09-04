@@ -133,6 +133,7 @@ revision records:
 
 - the source slide id and SHA-256 digest;
 - atlas id, resolution, shape, section index, yaw, pitch, and hemisphere view;
+- atlas data version, citation, and a SHA-256 digest of its metadata manifest;
 - crop, flip, automatic and manual transforms;
 - landmark pairs;
 - polygon vertices, tissue code, creation time, and region fractions.
