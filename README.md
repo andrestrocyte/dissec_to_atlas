@@ -1,5 +1,9 @@
 # dissec → atlas
 
+<p align="center">
+  <img src="assets/dissec_to_atlas_logo.svg" alt="Colorful dissected mouse brain flowing through an arrow into an atlas coronal section" width="680">
+</p>
+
 `dissec-to-atlas` is a local browser workstation for assigning physically dissected
 tissue pieces to regions in a 3D reference atlas. It was designed for coronal mouse
 brain sections that may be partial, torn, photographed after dissection, or arranged

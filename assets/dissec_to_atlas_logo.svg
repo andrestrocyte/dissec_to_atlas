@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 360" role="img" aria-labelledby="title desc">
+  <title id="title">dissec to atlas logo</title>
+  <desc id="desc">A colorful dissected mouse brain connected by an arrow to a coronal atlas section.</desc>
+  <defs>
+    <clipPath id="brainClip">
+      <path d="M112 236c-25-30-28-71-10-105 13-25 35-42 62-50 9-39 43-64 83-59 22-22 62-25 89-5 27-10 61-2 78 22 36 4 64 35 63 71 28 20 38 59 22 90-13 25-36 41-63 45-9 31-38 51-70 48-25 24-65 25-91 3-34 10-70-3-86-33-31 1-60-10-77-27z"/>
+    </clipPath>
+  </defs>
+
+  <!-- dissected brain mascot -->
+  <path d="M112 236c-25-30-28-71-10-105 13-25 35-42 62-50 9-39 43-64 83-59 22-22 62-25 89-5 27-10 61-2 78 22 36 4 64 35 63 71 28 20 38 59 22 90-13 25-36 41-63 45-9 31-38 51-70 48-25 24-65 25-91 3-34 10-70-3-86-33-31 1-60-10-77-27z" fill="#814bd1" stroke="#111318" stroke-width="16" stroke-linejoin="round"/>
+  <g clip-path="url(#brainClip)" stroke="#111318" stroke-width="11" stroke-linejoin="round">
+    <path d="M-5 99c70-26 133-9 179 34 19 18 31 44 23 76-8 30-35 50-70 48-45-3-93-30-132-72z" fill="#f07f68"/>
+    <path d="M170-20c41 33 66 73 62 117-2 25-14 52-36 66-22 14-57 13-77-6-24-23-26-62-11-92 14-28 36-58 62-85z" fill="#2fc4b0"/>
+    <path d="M259-23c43 17 79 50 84 91 4 34-13 66-42 82-29 16-65 10-84-15-21-29-18-72-3-102z" fill="#f7c84d"/>
+    <path d="M339-18c51 25 80 67 75 111-4 34-27 60-58 66-30 6-60-10-72-38-13-31-1-73 19-99z" fill="#4d9fe7"/>
+    <path d="M454 67c43 20 73 64 64 103-8 33-35 52-64 51-26-1-48-20-50-47-2-30 17-76 50-107z" fill="#ef6b9a"/>
+    <path d="M93 222c49-6 92 6 125 37 26 24 62 32 101 19 29-10 56-32 76-58" fill="none"/>
+    <path d="M174 76c-14 31-13 70 8 96 13 16 31 28 53 32" fill="none"/>
+    <path d="M285 58c-9 31-1 66 23 88 14 13 31 21 50 23" fill="none"/>
+  </g>
+  <path d="M115 244c-15 23-10 53 12 69 23 17 50 15 71-1 16 25 51 34 78 18 22 21 59 19 79-5 25 12 57 2 69-23" fill="none" stroke="#111318" stroke-width="16" stroke-linecap="round"/>
+
+  <!-- transfer arrow -->
+  <path d="M500 180h156" fill="none" stroke="#111318" stroke-width="30" stroke-linecap="round"/>
+  <path d="M500 180h156" fill="none" stroke="#2fc4b0" stroke-width="18" stroke-linecap="round"/>
+  <path d="m633 133 62 47-62 47" fill="none" stroke="#111318" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m633 133 62 47-62 47" fill="none" stroke="#2fc4b0" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- simplified Allen-style coronal atlas -->
+  <path d="M768 79c55-43 146-42 201 0 39 30 56 75 54 120-2 45-19 90-56 119-53 41-145 41-198 0-37-29-54-74-56-119-2-45 15-90 55-120z" fill="#d9dee5" stroke="#111318" stroke-width="16"/>
+  <path d="M778 151c18-32 50-54 87-58 16 26 16 57 3 83-16 31-45 49-79 53-19-21-25-51-11-78z" fill="#f07f68" stroke="#111318" stroke-width="10"/>
+  <path d="M865 93c37 4 69 26 87 58 14 27 8 57-11 78-34-4-63-22-79-53-13-26-13-57 3-83z" fill="#4d9fe7" stroke="#111318" stroke-width="10"/>
+  <path d="M783 229c26 10 53 16 82 16s56-6 82-16c-13 32-42 53-82 53s-69-21-82-53z" fill="#f7c84d" stroke="#111318" stroke-width="10"/>
+  <path d="M865 108v120" stroke="#111318" stroke-width="8" stroke-linecap="round"/>
+  <path d="M831 148c-13 16-13 36 0 50M899 148c13 16 13 36 0 50" fill="none" stroke="#111318" stroke-width="8" stroke-linecap="round"/>
+</svg>
