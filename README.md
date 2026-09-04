@@ -10,8 +10,9 @@ The app combines a reproducible atlas plane with human anatomical judgment:
 - crop one tissue photograph from a larger slide image;
 - scroll through the Allen CCF and tilt the coronal plane in yaw and pitch;
 - request a coarse, advisory image-alignment suggestion;
+- extract candidate piece outlines from closed red hand-drawn boundaries;
 - correct the registration with paired landmarks and direct transform controls;
-- draw a polygon for each dissected piece;
+- draw polygons or drag candidate vertices, then assign each workbook tissue code;
 - calculate the fraction of that polygon in every Allen structure;
 - save immutable revisions, reload earlier work, reset, and export a long CSV table.
 
@@ -113,7 +114,10 @@ silently applied to pieces that belong on an adjacent section.
    major white-matter boundaries, and the pial surface.
 5. **Draw pieces.** Select the physical tissue code, draw its boundary on the atlas
    overlay, then double-click or press Enter. The app samples the annotation volume
-   and reports every intersected structure.
+   and reports every intersected structure. If the source uses closed red boundary
+   lines, **Suggest outlines from red marks** can seed polygons. These are deliberately
+   named `candidate_N`; select each candidate, assign its tissue code, and drag its
+   vertices before marking the registration reviewed.
 6. **Review and save.** Save creates a timestamped JSON in `revisions/` and updates
    `latest.json`. Existing revisions are never overwritten. CSV export creates one
    row per tissue-piece/Allen-region intersection.

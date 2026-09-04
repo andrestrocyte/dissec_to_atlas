@@ -71,6 +71,14 @@ class AutoAlignRequest(PlaneRequest):
     allow_flip: bool = True
 
 
+class PieceSuggestRequest(BaseModel):
+    slide_id: str
+    crop: list[float] = Field(min_length=4, max_length=4)
+    width: int = Field(default=640, ge=128, le=1400)
+    height: int = Field(default=480, ge=128, le=1200)
+    min_area_fraction: float = Field(default=0.002, ge=0.0001, le=0.1)
+
+
 class SaveRequest(BaseModel):
     state: dict
     label: str | None = None

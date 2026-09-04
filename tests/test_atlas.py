@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from dissec_to_atlas.app import create_app
-from dissec_to_atlas.atlas import SyntheticAtlasProvider
+from dissec_to_atlas.atlas import SyntheticAtlasProvider, detect_red_piece_polygons
 
 
 def project(tmp_path: Path) -> Path:
@@ -44,6 +44,21 @@ def test_synthetic_plane_and_polygon_summary():
     assert sum(row["pixels"] for row in summary) == 281 * 201
     assert np.isclose(sum(row["fraction"] for row in summary), 1)
     assert {row["id"] for row in summary} >= {0, 1, 2, 3}
+
+
+def test_red_boundary_piece_suggestions():
+    image = Image.new("RGB", (240, 200), "white")
+    pixels = np.asarray(image).copy()
+    # A closed red outline divided into four candidate tissue compartments.
+    import cv2
+
+    cv2.rectangle(pixels, (30, 25), (210, 175), (230, 20, 20), 5)
+    cv2.line(pixels, (120, 25), (120, 175), (230, 20, 20), 5)
+    cv2.line(pixels, (30, 100), (210, 100), (230, 20, 20), 5)
+    result = detect_red_piece_polygons(Image.fromarray(pixels), [0, 0, 240, 200], 240, 200)
+    assert result["method"] == "red_boundary_closed_components"
+    assert len(result["polygons"]) == 4
+    assert all(len(row["points"]) >= 4 for row in result["polygons"])
 
 
 def test_api_provenance_revision_and_reload(tmp_path):

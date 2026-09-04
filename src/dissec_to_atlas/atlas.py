@@ -207,3 +207,121 @@ def auto_align_crop(
             candidates.append({"ap_index": ap_index, "flipped": flipped, "score": float(score), "warp": warp.tolist()})
     candidates.sort(key=lambda row: row["score"], reverse=True)
     return {"best": candidates[0], "candidates": candidates[:8], "method": "edge_ecc_affine", "advisory": True}
+
+
+def detect_red_piece_polygons(
+    image: Image.Image,
+    crop: list[float],
+    width: int,
+    height: int,
+    min_area_fraction: float = 0.002,
+) -> dict:
+    """Find closed compartments in a red hand-drawn boundary network."""
+    x, y, w, h = [round(value) for value in crop]
+    x, y = max(0, x), max(0, y)
+    w, h = max(8, w), max(8, h)
+    rgb = np.asarray(image.convert("RGB"))[y : y + h, x : x + w]
+    if rgb.size == 0:
+        raise ValueError("crop is outside the slide image")
+    rgb = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
+    red, green, blue = (rgb[..., index].astype(np.int16) for index in range(3))
+    red_mask = ((red > 90) & (red > green * 1.28 + 12) & (red > blue * 1.28 + 12)).astype(np.uint8)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    red_mask = cv2.dilate(red_mask, kernel, iterations=1)
+    free = (1 - red_mask).astype(np.uint8)
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(free, 8)
+    minimum = width * height * min_area_fraction
+    maximum = width * height * 0.45
+    polygons = []
+    for label in range(1, count):
+        left, top, component_w, component_h, area = stats[label]
+        touches_border = left == 0 or top == 0 or left + component_w >= width or top + component_h >= height
+        if touches_border or not (minimum <= area <= maximum):
+            continue
+        component = (labels == label).astype(np.uint8)
+        contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            continue
+        contour = max(contours, key=cv2.contourArea)
+        perimeter = cv2.arcLength(contour, True)
+        contour = cv2.approxPolyDP(contour, max(1.5, 0.008 * perimeter), True)
+        points = [{"x": float(point[0][0]), "y": float(point[0][1])} for point in contour]
+        if len(points) < 3:
+            continue
+        polygons.append(
+            {
+                "points": points,
+                "area_pixels": int(area),
+                "centroid": {"x": float(centroids[label][0]), "y": float(centroids[label][1])},
+            }
+        )
+    polygons.sort(key=lambda row: (row["centroid"]["y"], row["centroid"]["x"]))
+    method = "red_boundary_closed_components"
+    # Hand-drawn cuts are often open at the tissue edge. In that case, compact
+    # coloured number glyphs provide seeds for a conservative within-tissue
+    # Voronoi fallback. Codes remain deliberately unassigned in the UI.
+    if len(polygons) < 2:
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+        _, tissue = cv2.threshold(gray, 0, 1, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+        chroma = rgb.max(axis=2).astype(np.int16) - rgb.min(axis=2).astype(np.int16)
+        coloured = ((chroma > 35) & (rgb.max(axis=2) > 60)).astype(np.uint8)
+        component_count, _, colour_stats, colour_centroids = cv2.connectedComponentsWithStats(
+            coloured, 8
+        )
+        seeds = []
+        for label in range(1, component_count):
+            _, _, component_w, component_h, area = colour_stats[label]
+            extent = area / max(1, component_w * component_h)
+            aspect = max(component_w / max(1, component_h), component_h / max(1, component_w))
+            if (
+                12 <= area <= width * height * 0.01
+                and aspect < 2.2
+                and extent >= 0.09
+                and component_w < width * 0.2
+                and component_h < height * 0.25
+            ):
+                seeds.append(tuple(float(value) for value in colour_centroids[label]))
+        if 2 <= len(seeds) <= 50:
+            yy, xx = np.indices((height, width))
+            distances = np.stack(
+                [(xx - seed_x) ** 2 + (yy - seed_y) ** 2 for seed_x, seed_y in seeds]
+            )
+            nearest = np.argmin(distances, axis=0)
+            fallback = []
+            for index, (seed_x, seed_y) in enumerate(seeds):
+                component = ((nearest == index) & tissue.astype(bool)).astype(np.uint8)
+                component = cv2.morphologyEx(component, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+                contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if not contours:
+                    continue
+                containing = [
+                    candidate
+                    for candidate in contours
+                    if cv2.pointPolygonTest(candidate, (seed_x, seed_y), False) >= 0
+                ]
+                contour = max(containing or contours, key=cv2.contourArea)
+                if cv2.contourArea(contour) < minimum:
+                    continue
+                perimeter = cv2.arcLength(contour, True)
+                contour = cv2.approxPolyDP(contour, max(1.5, 0.008 * perimeter), True)
+                points = [
+                    {"x": float(point[0][0]), "y": float(point[0][1])} for point in contour
+                ]
+                if len(points) >= 3:
+                    fallback.append(
+                        {
+                            "points": points,
+                            "area_pixels": int(cv2.contourArea(contour)),
+                            "centroid": {"x": seed_x, "y": seed_y},
+                        }
+                    )
+            if len(fallback) >= 2:
+                polygons = fallback
+                method = "colour_label_seeded_voronoi"
+    return {
+        "polygons": polygons,
+        "method": method,
+        "advisory": True,
+        "red_pixel_fraction": float(red_mask.mean()),
+    }

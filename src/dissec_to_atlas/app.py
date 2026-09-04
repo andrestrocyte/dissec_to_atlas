@@ -8,8 +8,20 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from .atlas import AtlasProvider, SyntheticAtlasProvider, auto_align_crop, image_fingerprint
-from .models import AutoAlignRequest, PlaneRequest, PolygonSummaryRequest, SaveRequest
+from .atlas import (
+    AtlasProvider,
+    SyntheticAtlasProvider,
+    auto_align_crop,
+    detect_red_piece_polygons,
+    image_fingerprint,
+)
+from .models import (
+    AutoAlignRequest,
+    PieceSuggestRequest,
+    PlaneRequest,
+    PolygonSummaryRequest,
+    SaveRequest,
+)
 from .project import ProjectStore
 
 
@@ -83,6 +95,21 @@ def create_app(project_file: str | Path, synthetic: bool = False) -> FastAPI:
         try:
             with Image.open(store.slide_path(request.slide_id)) as image:
                 result = auto_align_crop(image, request.crop, atlas_provider(), request)
+        except (KeyError, FileNotFoundError, OSError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return result
+
+    @app.post("/api/suggest-pieces")
+    def suggest_pieces(request: PieceSuggestRequest):
+        try:
+            with Image.open(store.slide_path(request.slide_id)) as image:
+                result = detect_red_piece_polygons(
+                    image,
+                    request.crop,
+                    request.width,
+                    request.height,
+                    request.min_area_fraction,
+                )
         except (KeyError, FileNotFoundError, OSError, ValueError) as exc:
             raise HTTPException(400, str(exc)) from exc
         return result
