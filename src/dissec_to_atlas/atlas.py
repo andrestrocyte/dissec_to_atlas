@@ -98,8 +98,9 @@ class AtlasProvider:
         api = np.clip(np.rint(ap), 0, ap_n - 1).astype(np.intp)
         dvi = np.clip(np.rint(dv), 0, dv_n - 1).astype(np.intp)
         mli = np.clip(np.rint(ml), 0, ml_n - 1).astype(np.intp)
-        reference = self.reference[api, dvi, mli]
-        annotation = self.annotation[api, dvi, mli]
+        valid = (ap >= 0) & (ap <= ap_n - 1)
+        reference = np.where(valid, self.reference[api, dvi, mli], 0)
+        annotation = np.where(valid, self.annotation[api, dvi, mli], 0)
         mid = (ml_n - 1) / 2
         if hemisphere == "left":
             annotation = np.where(ml <= mid, annotation, 0)
@@ -213,7 +214,9 @@ def auto_align_crop(
                 )
             except cv2.error:
                 score = -1.0
-            candidates.append({"ap_index": ap_index, "flipped": flipped, "score": float(score), "warp": warp.tolist()})
+            # ECC maps template coordinates into the moving image. The canvas
+            # needs the forward tissue-to-atlas mapping, so invert it.
+            candidates.append({"ap_index": ap_index, "flipped": flipped, "score": float(score), "warp": cv2.invertAffineTransform(warp).tolist()})
     candidates.sort(key=lambda row: row["score"], reverse=True)
     return {"best": candidates[0], "candidates": candidates[:8], "method": "edge_ecc_affine", "advisory": True}
 

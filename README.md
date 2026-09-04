@@ -112,15 +112,23 @@ silently applied to pieces that belong on an adjacent section.
    point in the atlas view. Two pairs fit a similarity transform; three or more fit
    an affine transform. Prefer ventricular corners, the midline, hippocampal turns,
    major white-matter boundaries, and the pial surface.
-5. **Draw pieces.** Select the physical tissue code, draw its boundary on the atlas
-   overlay, then double-click or press Enter. The app samples the annotation volume
-   and reports every intersected structure. If the source uses closed red boundary
-   lines, **Suggest outlines from red marks** can seed polygons. These are deliberately
-   named `candidate_N`; select each candidate, assign its tissue code, and drag its
-   vertices before marking the registration reviewed.
-6. **Review and save.** Save creates a timestamped JSON in `revisions/` and updates
-   `latest.json`. Existing revisions are never overwritten. CSV export creates one
-   row per tissue-piece/Allen-region intersection.
+5. **Draw pieces.** Choose the physical tissue code and press **+ Draw polygon**.
+   Click points on the atlas overlay, then press **Finish polygon** (or Enter).
+   **Cancel drawing (Esc)** abandons only the unfinished draft. Completed polygons
+   appear in **Annotations** immediately; click an entry or polygon to select it,
+   drag its white handles, assign another code, or press **Delete polygon**. Undo and
+   Redo remain available even when a draft is unfinished. The app samples the
+   annotation volume and reports every intersected structure. If the source uses
+   closed red boundary lines, **Suggest outlines from red marks** can seed polygons.
+   These are deliberately named `candidate_N`; select each candidate, assign its
+   tissue code, and drag its vertices before marking the registration reviewed.
+6. **Review and save.** The newest saved checkpoint opens automatically. Changes are
+   also written to an immutable autosave revision after a short pause, and a browser
+   recovery copy protects unfinished drawings. **History** opens older checkpoints;
+   **This section / All sections** controls the annotation list. Save creates a
+   timestamped JSON in `revisions/` and updates `latest.json`. Existing revisions are
+   never overwritten. CSV export creates one row per tissue-piece/Allen-region
+   intersection.
 
 Useful shortcuts: <kbd>Ctrl/Cmd</kbd>+<kbd>S</kbd> saves; <kbd>Enter</kbd> closes the
 current polygon.

@@ -69,6 +69,10 @@ class ProjectStore:
                         "filename": path.name,
                         "saved_at": record.get("saved_at"),
                         "label": record.get("label"),
+                        "annotation_count": sum(
+                            len(slide.get("annotations", []))
+                            for slide in record.get("state", {}).get("slides", {}).values()
+                        ),
                     }
                 )
             except (OSError, json.JSONDecodeError):

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>dissec → atlas</title>
-  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/style.css?v=3">
 </head>
 <body>
   <header>
@@ -13,23 +13,22 @@
       <h1>dissec <span>→</span> atlas</h1>
     </div>
     <div class="header-actions">
-      <span id="saveStatus" class="status">Not saved</span>
+      <span id="saveStatus" class="status" role="status">Opening project…</span>
       <input id="revisionLabel" class="revision-label" value="manual_review" aria-label="Revision label">
-      <button id="loadButton" class="secondary">Load revision</button>
-      <button id="saveButton" class="primary">Save revision</button>
+      <button id="loadButton" class="secondary">History</button>
+      <button id="saveButton" class="primary">Save checkpoint</button>
     </div>
   </header>
 
   <main>
     <aside class="left-panel">
       <section>
-        <label for="slideSelect">Physical slide</label>
+        <label for="slideSelect">Section</label>
         <select id="slideSelect"></select>
-        <div id="slideMeta" class="meta"></div>
+        <div class="row"><button id="previousSlide" title="Previous section">← Previous</button><button id="nextSlide" title="Next section">Next →</button></div><div id="slideMeta" class="meta"></div>
       </section>
 
-      <section>
-        <h2>1 · Isolate a section</h2>
+      <details open><summary>1 · Crop source photograph</summary><section>
         <p>Drag a box around one tissue photograph. The full presentation slide remains unchanged.</p>
         <div class="row">
           <button id="cropButton" class="tool active">Draw crop</button>
@@ -38,8 +37,7 @@
         <label class="check"><input id="sourceFlip" type="checkbox"> Source is horizontally flipped</label>
       </section>
 
-      <section>
-        <h2>2 · Find the atlas plane</h2>
+      </details><details open><summary>2 · Atlas plane</summary><section>
         <div class="number-line"><label>AP section</label><input id="apNumber" type="number"><span id="apUm">—</span></div>
         <input id="apSlider" type="range" min="0" max="100" value="40">
         <div class="two-col">
@@ -51,8 +49,7 @@
         <div id="autoResult" class="meta"></div>
       </section>
 
-      <section>
-        <h2>3 · Correct alignment</h2>
+      </details><details><summary>3 · Fine alignment & landmarks</summary><section>
         <p>Choose matching landmarks: click tissue, then atlas. Two pairs fit similarity; three or more fit affine.</p>
         <div class="row">
           <button id="landmarkButton" class="tool">Add landmarks</button>
@@ -68,45 +65,66 @@
         <label>Overlay opacity <input id="opacity" type="range" min="0" max="1" value="0.45" step="0.01"></label>
       </section>
 
-      <section>
-        <h2>4 · Delimit tissue pieces</h2>
-        <label>Piece code <select id="pieceSelect"></select></label>
-        <button id="polygonButton" class="wide">Draw polygon on overlay</button>
-        <button id="suggestPiecesButton" class="wide">Suggest outlines from red marks</button>
-        <div class="row">
-          <button id="editPolygonButton" class="tool">Edit vertices</button>
-          <button id="assignPieceButton" class="tool">Assign code</button>
-        </div>
-        <p class="hint">Click vertices, then double-click or press Enter to close.</p>
+      </details><section>
+        <h2>Review this section</h2>
         <label class="check"><input id="reviewToggle" type="checkbox"> Registration manually reviewed</label>
       </section>
     </aside>
 
     <div class="workspace">
-      <div class="canvas-card">
+      <div class="editor-bar">
+        <div class="row wrap">
+          <button id="selectButton" class="tool active">Select / move vertices</button>
+          <label class="piece-label">Piece <select id="pieceSelect" aria-label="Piece code"></select></label>
+          <button id="polygonButton" class="tool primary">+ Draw polygon</button>
+          <button id="undoButton" title="Undo (Ctrl/Cmd Z)">↶ Undo</button>
+          <button id="redoButton" title="Redo (Ctrl/Cmd Shift Z)">↷ Redo</button>
+        </div>
+        <div id="modeHint" role="status">Click a polygon or its entry to select it.</div>
+        <div id="draftTools" class="row" hidden>
+          <button id="finishPolygonButton" class="primary">Finish polygon</button>
+          <button id="removeLastVertex">Remove last point</button>
+          <button id="cancelPolygonButton">Cancel drawing (Esc)</button>
+        </div>
+        <div id="selectionTools" class="row wrap" hidden>
+          <b id="selectedLabel"></b>
+          <button id="assignPieceButton">Assign chosen code</button>
+          <button id="deletePolygonButton" class="danger">Delete polygon</button>
+        </div>
+      </div>
+      <div class="view-bar row wrap">
+        <label class="check"><input id="showPolygons" type="checkbox" checked> Polygons & labels</label>
+        <label class="check"><input id="showTissue" type="checkbox" checked> Tissue overlay</label>
+        <label class="check"><input id="showSource" type="checkbox" checked> Source view</label>
+        <label>Zoom <select id="zoomSelect"><option value="1">Fit</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select></label>
+      </div>
+      <div class="canvas-card source-card" id="sourceCard">
         <div class="canvas-heading"><div><b>Source evidence</b><span>crop + tissue landmarks</span></div><span id="sourceCoords">—</span></div>
         <div class="canvas-wrap" id="sourceWrap"><canvas id="sourceCanvas" width="720" height="520"></canvas><canvas id="sourceOverlay" width="720" height="520"></canvas></div>
       </div>
-      <div class="canvas-card">
-        <div class="canvas-heading"><div><b>Allen CCF overlay</b><span>atlas + transformed tissue + polygons</span></div><span id="atlasCoords">—</span></div>
-        <div class="canvas-wrap" id="atlasWrap"><canvas id="atlasCanvas" width="720" height="520"></canvas><canvas id="atlasOverlay" width="720" height="520"></canvas></div>
+      <div class="canvas-card atlas-card">
+        <div class="canvas-heading"><div><b>Allen CCF overlay</b><span>Click to select · drag handles to edit</span></div><span id="atlasCoords">—</span></div>
+        <div class="atlas-scroll" id="atlasScroll"><div class="canvas-wrap" id="atlasWrap"><canvas id="atlasCanvas" width="720" height="520"></canvas><canvas id="atlasOverlay" width="720" height="520"></canvas></div></div>
       </div>
     </div>
 
     <aside class="right-panel">
       <section>
-        <div class="section-heading"><h2>Piece annotations</h2><button id="exportButton" class="text-button">Export CSV</button></div>
+        <div class="section-heading"><h2>Annotations <span id="annotationCount"></span></h2><button id="exportButton" class="text-button">Export CSV</button></div>
+        <div id="projectProgress" class="meta"></div>
+        <div class="row"><button id="currentScope" class="tool active">This section</button><button id="allScope" class="tool">All sections</button></div>
+        <input id="annotationSearch" type="search" placeholder="Find a piece or section…" aria-label="Find annotations">
         <div id="annotationList" class="annotation-list"><div class="empty">No polygons yet</div></div>
       </section>
       <section>
-        <h2>Atlas composition</h2>
+        <h2 id="compositionTitle">Atlas composition</h2>
         <div id="regionTable" class="region-table"><div class="empty">Select or draw a polygon</div></div>
       </section>
-      <section class="provenance">
-        <h2>Registration record</h2>
+      <details class="provenance"><summary>Registration record</summary><section>
         <dl id="provenance"></dl>
-      </section>
+      </section></details>
       <section>
+        <button id="suggestPiecesButton" class="wide">Suggest outlines from red marks</button><p>Suggestions need anatomical review and piece codes.</p><button id="clearPolygons" class="danger wide">Clear polygons on this section</button>
         <button id="resetSlide" class="danger wide">Reset current slide</button>
         <button id="resetAll" class="danger ghost wide">Start whole project from scratch</button>
       </section>
@@ -117,7 +135,7 @@
     <div class="dialog-head"><h2>Load a saved revision</h2><button id="closeDialog">×</button></div>
     <div id="revisionList"></div>
   </dialog>
-  <div id="toast"></div>
-  <script src="/assets/app.js"></script>
+  <div id="toast" role="status"></div><dialog id="confirmDialog"><h2 id="confirmTitle"></h2><p id="confirmText"></p><div class="row"><button id="confirmCancel">Cancel</button><button id="confirmProceed" class="danger">Continue</button></div></dialog>
+  <script src="/assets/app.js?v=3"></script>
 </body>
 </html>
