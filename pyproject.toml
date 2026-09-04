@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dissec-to-atlas"
+version = "0.1.0"
+description = "Interactive mapping of dissected tissue pieces to a 3D reference atlas"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Andres de Vicente"}]
+dependencies = [
+  "fastapi>=0.115",
+  "numpy>=2.0",
+  "opencv-python-headless>=4.10",
+  "pillow>=11",
+  "pydantic>=2.9",
+  "uvicorn[standard]>=0.32",
+]
+
+[project.optional-dependencies]
+allen = ["brainglobe-atlasapi>=3.0,<4"]
+dev = ["httpx>=0.28", "pytest>=8.3", "ruff>=0.9"]
+
+[project.scripts]
+dissec-to-atlas = "dissec_to_atlas.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dissec_to_atlas"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 92
+target-version = "py311"
+

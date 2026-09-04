@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>dissec → atlas</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <div class="eyebrow">CORONAL DISSECTION REGISTRATION</div>
+      <h1>dissec <span>→</span> atlas</h1>
+    </div>
+    <div class="header-actions">
+      <span id="saveStatus" class="status">Not saved</span>
+      <input id="revisionLabel" class="revision-label" value="manual_review" aria-label="Revision label">
+      <button id="loadButton" class="secondary">Load revision</button>
+      <button id="saveButton" class="primary">Save revision</button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="left-panel">
+      <section>
+        <label for="slideSelect">Physical slide</label>
+        <select id="slideSelect"></select>
+        <div id="slideMeta" class="meta"></div>
+      </section>
+
+      <section>
+        <h2>1 · Isolate a section</h2>
+        <p>Drag a box around one tissue photograph. The full presentation slide remains unchanged.</p>
+        <div class="row">
+          <button id="cropButton" class="tool active">Draw crop</button>
+          <button id="clearCropButton" class="tool">Full image</button>
+        </div>
+        <label class="check"><input id="sourceFlip" type="checkbox"> Source is horizontally flipped</label>
+      </section>
+
+      <section>
+        <h2>2 · Find the atlas plane</h2>
+        <div class="number-line"><label>AP section</label><input id="apNumber" type="number"><span id="apUm">—</span></div>
+        <input id="apSlider" type="range" min="0" max="100" value="40">
+        <div class="two-col">
+          <label>Yaw <input id="yaw" type="number" min="-20" max="20" step="0.5" value="0"></label>
+          <label>Pitch <input id="pitch" type="number" min="-20" max="20" step="0.5" value="0"></label>
+        </div>
+        <label>Hemisphere <select id="hemisphere"><option value="both">Both</option><option value="left">Image left</option><option value="right">Image right</option></select></label>
+        <button id="autoButton" class="wide">Suggest alignment near this section</button>
+        <div id="autoResult" class="meta"></div>
+      </section>
+
+      <section>
+        <h2>3 · Correct alignment</h2>
+        <p>Choose matching landmarks: click tissue, then atlas. Two pairs fit similarity; three or more fit affine.</p>
+        <div class="row">
+          <button id="landmarkButton" class="tool">Add landmarks</button>
+          <button id="fitButton" class="tool">Fit pairs</button>
+          <button id="clearLandmarks" class="icon" title="Clear landmarks">Clear</button>
+        </div>
+        <div class="two-col compact">
+          <label>X <input id="tx" type="number" step="1" value="0"></label>
+          <label>Y <input id="ty" type="number" step="1" value="0"></label>
+          <label>Rotation <input id="rotation" type="number" step="0.25" value="0"></label>
+          <label>Scale <input id="scale" type="number" step="0.01" value="1"></label>
+        </div>
+        <label>Overlay opacity <input id="opacity" type="range" min="0" max="1" value="0.45" step="0.01"></label>
+      </section>
+
+      <section>
+        <h2>4 · Delimit tissue pieces</h2>
+        <label>Piece code <select id="pieceSelect"></select></label>
+        <button id="polygonButton" class="wide">Draw polygon on overlay</button>
+        <p class="hint">Click vertices, then double-click or press Enter to close.</p>
+        <label class="check"><input id="reviewToggle" type="checkbox"> Registration manually reviewed</label>
+      </section>
+    </aside>
+
+    <div class="workspace">
+      <div class="canvas-card">
+        <div class="canvas-heading"><div><b>Source evidence</b><span>crop + tissue landmarks</span></div><span id="sourceCoords">—</span></div>
+        <div class="canvas-wrap" id="sourceWrap"><canvas id="sourceCanvas" width="720" height="520"></canvas><canvas id="sourceOverlay" width="720" height="520"></canvas></div>
+      </div>
+      <div class="canvas-card">
+        <div class="canvas-heading"><div><b>Allen CCF overlay</b><span>atlas + transformed tissue + polygons</span></div><span id="atlasCoords">—</span></div>
+        <div class="canvas-wrap" id="atlasWrap"><canvas id="atlasCanvas" width="720" height="520"></canvas><canvas id="atlasOverlay" width="720" height="520"></canvas></div>
+      </div>
+    </div>
+
+    <aside class="right-panel">
+      <section>
+        <div class="section-heading"><h2>Piece annotations</h2><button id="exportButton" class="text-button">Export CSV</button></div>
+        <div id="annotationList" class="annotation-list"><div class="empty">No polygons yet</div></div>
+      </section>
+      <section>
+        <h2>Atlas composition</h2>
+        <div id="regionTable" class="region-table"><div class="empty">Select or draw a polygon</div></div>
+      </section>
+      <section class="provenance">
+        <h2>Registration record</h2>
+        <dl id="provenance"></dl>
+      </section>
+      <section>
+        <button id="resetSlide" class="danger wide">Reset current slide</button>
+        <button id="resetAll" class="danger ghost wide">Start whole project from scratch</button>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="loadDialog">
+    <div class="dialog-head"><h2>Load a saved revision</h2><button id="closeDialog">×</button></div>
+    <div id="revisionList"></div>
+  </dialog>
+  <div id="toast"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

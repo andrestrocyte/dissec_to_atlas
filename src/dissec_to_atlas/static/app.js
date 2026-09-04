@@ -1,0 +1,106 @@
+const $ = id => document.getElementById(id);
+const CW=720, CH=520;
+const state={project:null,atlas:null,slideId:null,slides:{},mode:'crop',pendingCrop:null,selectedAnnotation:null,dirty:false};
+let sourceImage=new Image(), atlasImage=new Image(), atlasUrl=null, renderTimer=null;
+
+function blankSlide(){return {crop:null,apIndex:null,yaw:0,pitch:0,hemisphere:'both',flipped:false,opacity:.45,manual:{tx:0,ty:0,rotation:0,scale:1},autoWarp:null,landmarks:{source:[],atlas:[]},annotations:[],reviewed:false,registrationStatus:'unreviewed'};}
+function S(){if(!state.slides[state.slideId])state.slides[state.slideId]=blankSlide();return state.slides[state.slideId]}
+function markDirty(){state.dirty=true;$('saveStatus').textContent='Unsaved changes'}
+function toast(msg){const e=$('toast');e.textContent=msg;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2600)}
+function canvasPoint(canvas,event){const r=canvas.getBoundingClientRect();return{x:(event.clientX-r.left)*canvas.width/r.width,y:(event.clientY-r.top)*canvas.height/r.height}}
+function fitRect(iw,ih,cw=CW,ch=CH){const k=Math.min(cw/iw,ch/ih);return{x:(cw-iw*k)/2,y:(ch-ih*k)/2,w:iw*k,h:ih*k,k}}
+function sourceGeometry(){const s=S(), crop=s.crop||[0,0,sourceImage.naturalWidth,sourceImage.naturalHeight];const fit=fitRect(crop[2],crop[3]);return{crop,fit}}
+function sourceCanvasToImage(p){const {crop,fit}=sourceGeometry();let localX=(p.x-fit.x)/fit.k;if(S().flipped)localX=crop[2]-localX;return{x:crop[0]+localX,y:crop[1]+(p.y-fit.y)/fit.k}}
+function imageToSourceCanvas(p){const {crop,fit}=sourceGeometry();let localX=p.x-crop[0];if(S().flipped)localX=crop[2]-localX;return{x:fit.x+localX*fit.k,y:fit.y+(p.y-crop[1])*fit.k}}
+
+async function api(url,options={}){const r=await fetch(url,options);if(!r.ok)throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail||r.statusText);return r}
+async function init(){
+  state.project=await (await api('/api/project')).json();
+  state.atlas=await (await api('/api/atlas/info')).json();
+  $('slideSelect').innerHTML=state.project.slides.map(s=>`<option value="${s.id}">${s.display_name||s.id}${s.review_required?' ⚠':''}</option>`).join('');
+  $('apSlider').max=state.atlas.shape[0]-1;
+  $('apNumber').max=state.atlas.shape[0]-1;$('apNumber').min=0;
+  await selectSlide(state.project.slides[0].id);
+}
+async function selectSlide(id){
+  state.slideId=id;$('slideSelect').value=id;const meta=state.project.slides.find(x=>x.id===id),s=S();
+  if(s.apIndex==null)s.apIndex=Math.min(state.atlas.shape[0]-1,meta.atlas_ap_index_hint??Math.floor(state.atlas.shape[0]/2));
+  $('slideMeta').innerHTML=`${meta.tissue_pieces.length} pieces${meta.physical_slide?` · physical slide ${meta.physical_slide}`:''}${meta.source_atlas_plate_hints?.length?` · source ARA ${meta.source_atlas_plate_hints.join('/')}`:''}${meta.atlas_ap_index_hint!=null?` · CCF index ${meta.atlas_ap_index_hint}`:''}${meta.review_required?'<br><b class="warn">Manual review required</b>':''}${meta.notes?`<br>${meta.notes}`:''}`;
+  $('pieceSelect').innerHTML=meta.tissue_pieces.map(p=>`<option value="${p.code}">${p.code}${p.notes?' · '+p.notes:''}</option>`).join('');
+  await new Promise((resolve,reject)=>{sourceImage.onload=resolve;sourceImage.onerror=reject;sourceImage.src=`/api/slides/${encodeURIComponent(id)}/image?t=${Date.now()}`});
+  syncControls();drawSource();await loadAtlas();drawAnnotations();renderLists();
+}
+function syncControls(){const s=S();$('apSlider').value=s.apIndex;$('apNumber').value=s.apIndex;$('yaw').value=s.yaw;$('pitch').value=s.pitch;$('hemisphere').value=s.hemisphere;$('sourceFlip').checked=s.flipped;$('opacity').value=s.opacity;$('reviewToggle').checked=!!s.reviewed;for(const k of ['tx','ty','rotation','scale'])$(k).value=s.manual[k];updateApLabel()}
+function updateApLabel(){const s=S(),res=state.atlas.resolution_um[0];$('apUm').textContent=`${Math.round(s.apIndex*res)} µm from anterior origin`}
+
+function drawSource(){
+  const c=$('sourceCanvas'),ctx=c.getContext('2d'),s=S(),{crop,fit}=sourceGeometry();ctx.fillStyle='#161a19';ctx.fillRect(0,0,CW,CH);ctx.save();
+  if(s.flipped){ctx.translate(CW,0);ctx.scale(-1,1)}ctx.drawImage(sourceImage,crop[0],crop[1],crop[2],crop[3],fit.x,fit.y,fit.w,fit.h);ctx.restore();
+  const o=$('sourceOverlay').getContext('2d');o.clearRect(0,0,CW,CH);
+  if(!s.crop&&state.pendingCrop){o.fillStyle='rgba(45,212,191,.12)';o.strokeStyle='#2dd4bf';o.lineWidth=2;const r=state.pendingCrop;o.fillRect(r.x,r.y,r.w,r.h);o.strokeRect(r.x,r.y,r.w,r.h)}
+  s.landmarks.source.forEach((p,i)=>{const q=imageToSourceCanvas(p);pointMark(o,q,i+1,'#f59e0b')});
+}
+function pointMark(ctx,p,n,color){ctx.beginPath();ctx.arc(p.x,p.y,7,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#111';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(n,p.x,p.y+.5)}
+
+async function loadAtlas(){
+  const s=S();updateApLabel();const body={ap_index:+s.apIndex,yaw_deg:+s.yaw,pitch_deg:+s.pitch,width:CW,height:CH,hemisphere:s.hemisphere,boundaries:true};
+  const r=await api('/api/atlas/plane',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const blob=await r.blob();if(atlasUrl)URL.revokeObjectURL(atlasUrl);atlasUrl=URL.createObjectURL(blob);
+  await new Promise((resolve,reject)=>{atlasImage.onload=resolve;atlasImage.onerror=reject;atlasImage.src=atlasUrl});drawAtlas();
+}
+function composedMatrix(){
+  const s=S(),m=s.manual,rad=m.rotation*Math.PI/180,cs=Math.cos(rad)*m.scale,sn=Math.sin(rad)*m.scale,cx=CW/2,cy=CH/2;
+  let base=s.autoWarp?[[s.autoWarp[0][0],s.autoWarp[0][1],s.autoWarp[0][2]],[s.autoWarp[1][0],s.autoWarp[1][1],s.autoWarp[1][2]]]:[[1,0,0],[0,1,0]];
+  const manual=[[cs,-sn,m.tx+cx-cs*cx+sn*cy],[sn,cs,m.ty+cy-sn*cx-cs*cy]];return mulAffine(manual,base);
+}
+function mulAffine(a,b){return [[a[0][0]*b[0][0]+a[0][1]*b[1][0],a[0][0]*b[0][1]+a[0][1]*b[1][1],a[0][0]*b[0][2]+a[0][1]*b[1][2]+a[0][2]],[a[1][0]*b[0][0]+a[1][1]*b[1][0],a[1][0]*b[0][1]+a[1][1]*b[1][1],a[1][0]*b[0][2]+a[1][1]*b[1][2]+a[1][2]]]}
+function drawAtlas(){
+  const c=$('atlasCanvas'),ctx=c.getContext('2d'),s=S();ctx.clearRect(0,0,CW,CH);ctx.drawImage(atlasImage,0,0,CW,CH);ctx.save();ctx.globalAlpha=s.opacity;
+  const M=composedMatrix();ctx.setTransform(M[0][0],M[1][0],M[0][1],M[1][1],M[0][2],M[1][2]);const {crop}=sourceGeometry();if(s.flipped){ctx.translate(CW,0);ctx.scale(-1,1)}ctx.drawImage(sourceImage,crop[0],crop[1],crop[2],crop[3],0,0,CW,CH);ctx.restore();drawAnnotations();
+}
+function drawAnnotations(){
+  const ctx=$('atlasOverlay').getContext('2d'),s=S();ctx.clearRect(0,0,CW,CH);
+  s.landmarks.atlas.forEach((p,i)=>pointMark(ctx,p,i+1,'#f59e0b'));
+  s.annotations.forEach(a=>{pathPolygon(ctx,a.points);ctx.fillStyle=a.id===state.selectedAnnotation?'rgba(45,212,191,.38)':'rgba(20,108,99,.24)';ctx.fill();ctx.strokeStyle=a.id===state.selectedAnnotation?'#5eead4':'#2dd4bf';ctx.lineWidth=2;ctx.stroke();const p=a.points[0];ctx.fillStyle='#fff';ctx.font='bold 12px sans-serif';ctx.fillText(a.code,p.x+4,p.y-6)});
+  if(state.draftPolygon?.length){pathPolygon(ctx,state.draftPolygon,false);ctx.strokeStyle='#f59e0b';ctx.lineWidth=2;ctx.stroke();state.draftPolygon.forEach(p=>{ctx.fillStyle='#f59e0b';ctx.fillRect(p.x-2,p.y-2,4,4)})}
+}
+function pathPolygon(ctx,pts,close=true){ctx.beginPath();if(!pts.length)return;ctx.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));if(close)ctx.closePath()}
+
+function scheduleAtlas(){clearTimeout(renderTimer);renderTimer=setTimeout(async()=>{try{await loadAtlas();for(const annotation of S().annotations)await summarizeAnnotation(annotation)}catch(e){toast(e.message)}},120)}
+function controlChanged(e){const s=S(),id=e.target.id;if(id==='apSlider'||id==='apNumber')s.apIndex=+e.target.value;else if(id==='sourceFlip')s.flipped=e.target.checked;else if(id==='hemisphere')s.hemisphere=e.target.value;else if(['yaw','pitch','opacity'].includes(id))s[id]=+e.target.value;else if(['tx','ty','rotation','scale'].includes(id))s.manual[id]=+e.target.value;syncControls();markDirty();if(['apSlider','apNumber','yaw','pitch','hemisphere'].includes(id))scheduleAtlas();else{drawSource();drawAtlas()}}
+
+function setMode(mode){state.mode=mode;['cropButton','landmarkButton','polygonButton'].forEach(id=>$(id).classList.toggle('active',({crop:'cropButton',landmark:'landmarkButton',polygon:'polygonButton'})[mode]===id));$('sourceWrap').classList.toggle('drawing',['crop','landmark'].includes(mode));$('atlasWrap').classList.toggle('drawing',['landmark','polygon'].includes(mode));}
+let cropStart=null;
+$('sourceOverlay').addEventListener('pointerdown',e=>{if(state.mode!=='crop')return;cropStart=canvasPoint(e.currentTarget,e);state.pendingCrop={x:cropStart.x,y:cropStart.y,w:0,h:0};drawSource()});
+$('sourceOverlay').addEventListener('pointermove',e=>{const p=canvasPoint(e.currentTarget,e);$('sourceCoords').textContent=`x ${p.x.toFixed(0)} · y ${p.y.toFixed(0)}`;if(!cropStart)return;state.pendingCrop={x:Math.min(cropStart.x,p.x),y:Math.min(cropStart.y,p.y),w:Math.abs(p.x-cropStart.x),h:Math.abs(p.y-cropStart.y)};drawSource()});
+$('sourceOverlay').addEventListener('pointerup',e=>{if(!cropStart)return;const r=state.pendingCrop,im1=sourceCanvasToImage({x:r.x,y:r.y}),im2=sourceCanvasToImage({x:r.x+r.w,y:r.y+r.h});if(r.w>15&&r.h>15){S().crop=[Math.round(im1.x),Math.round(im1.y),Math.round(im2.x-im1.x),Math.round(im2.y-im1.y)];S().autoWarp=null;markDirty();toast('Crop set — now locate its atlas plane')}state.pendingCrop=null;cropStart=null;drawSource();drawAtlas()});
+$('sourceOverlay').addEventListener('click',e=>{if(state.mode!=='landmark')return;const p=sourceCanvasToImage(canvasPoint(e.currentTarget,e));S().landmarks.source.push(p);markDirty();drawSource();toast('Now click the matching point on the atlas')});
+$('atlasOverlay').addEventListener('pointermove',e=>{const p=canvasPoint(e.currentTarget,e);$('atlasCoords').textContent=`ML ${Math.round(p.x/CW*(state.atlas.shape[2]-1)*state.atlas.resolution_um[2])} µm · DV ${Math.round(p.y/CH*(state.atlas.shape[1]-1)*state.atlas.resolution_um[1])} µm`});
+$('atlasOverlay').addEventListener('click',e=>{const p=canvasPoint(e.currentTarget,e),s=S();if(state.mode==='landmark'){if(s.landmarks.atlas.length>=s.landmarks.source.length){toast('Click a source landmark first');return}s.landmarks.atlas.push(p);markDirty();drawAnnotations();toast(`${s.landmarks.atlas.length} landmark pair${s.landmarks.atlas.length===1?'':'s'}`)}else if(state.mode==='polygon'){state.draftPolygon=state.draftPolygon||[];state.draftPolygon.push(p);drawAnnotations()}});
+$('atlasOverlay').addEventListener('dblclick',e=>{if(state.mode==='polygon'){e.preventDefault();finishPolygon()}});
+
+function sourcePointToRegistration(p){const {crop}=sourceGeometry();let x=(p.x-crop[0])/crop[2]*CW,y=(p.y-crop[1])/crop[3]*CH;if(S().flipped)x=CW-x;return{x,y}}
+function solveLinear(A,b){for(let i=0;i<b.length;i++){let k=i;for(let j=i+1;j<b.length;j++)if(Math.abs(A[j][i])>Math.abs(A[k][i]))k=j;[A[i],A[k]]=[A[k],A[i]];[b[i],b[k]]=[b[k],b[i]];const d=A[i][i];if(Math.abs(d)<1e-9)throw Error('Landmarks are collinear');for(let j=i;j<b.length;j++)A[i][j]/=d;b[i]/=d;for(let k2=0;k2<b.length;k2++)if(k2!==i){const f=A[k2][i];for(let j=i;j<b.length;j++)A[k2][j]-=f*A[i][j];b[k2]-=f*b[i]}}return b}
+function fitLandmarks(){const s=S(),src=s.landmarks.source.slice(0,s.landmarks.atlas.length).map(sourcePointToRegistration),dst=s.landmarks.atlas;if(dst.length<2){toast('Add at least two landmark pairs');return}let M;if(dst.length===2){const [p,q]=src,[u,v]=dst,dx=q.x-p.x,dy=q.y-p.y,du=v.x-u.x,dv=v.y-u.y;const den=dx*dx+dy*dy,a=(du*dx+dv*dy)/den,b=(dv*dx-du*dy)/den;M=[[a,-b,u.x-a*p.x+b*p.y],[b,a,u.y-b*p.x-a*p.y]]}else{const A=[],b=[];src.forEach((p,i)=>{const q=dst[i];A.push([p.x,p.y,1,0,0,0]);b.push(q.x);A.push([0,0,0,p.x,p.y,1]);b.push(q.y)});const AtA=Array.from({length:6},()=>Array(6).fill(0)),Atb=Array(6).fill(0);for(let r=0;r<A.length;r++)for(let i=0;i<6;i++){Atb[i]+=A[r][i]*b[r];for(let j=0;j<6;j++)AtA[i][j]+=A[r][i]*A[r][j]}const x=solveLinear(AtA,Atb);M=[[x[0],x[1],x[2]],[x[3],x[4],x[5]]]}s.autoWarp=M;s.manual={tx:0,ty:0,rotation:0,scale:1};syncControls();markDirty();drawAtlas();toast(`Fitted ${dst.length>=3?'affine':'similarity'} transform`)}
+
+async function finishPolygon(){if(!state.draftPolygon||state.draftPolygon.length<3){toast('A polygon needs at least three vertices');return}const a={id:crypto.randomUUID(),code:$('pieceSelect').value,points:state.draftPolygon,regions:[],createdAt:new Date().toISOString()};S().annotations.push(a);state.selectedAnnotation=a.id;state.draftPolygon=null;markDirty();drawAnnotations();renderLists();await summarizeAnnotation(a)}
+async function summarizeAnnotation(a){const s=S(),body={ap_index:s.apIndex,yaw_deg:s.yaw,pitch_deg:s.pitch,width:CW,height:CH,hemisphere:s.hemisphere,boundaries:true,points:a.points};a.regions=(await (await api('/api/atlas/summarize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()).regions;a.plane={atlas_id:state.atlas.id,ap_index:s.apIndex,yaw_deg:s.yaw,pitch_deg:s.pitch,hemisphere:s.hemisphere,resolution_um:state.atlas.resolution_um};markDirty();renderLists()}
+function renderLists(){const s=S(),meta=state.project.slides.find(x=>x.id===state.slideId);$('annotationList').innerHTML=s.annotations.length?s.annotations.map(a=>`<div class="annotation ${a.id===state.selectedAnnotation?'selected':''}" data-id="${a.id}"><div class="top"><span>${a.code}</span><button data-delete="${a.id}">delete</button></div><small>${a.points.length} vertices · ${a.regions?.[0]?.acronym||'not sampled'}</small></div>`).join(''):'<div class="empty">No polygons yet</div>';
+  const selected=s.annotations.find(a=>a.id===state.selectedAnnotation);$('regionTable').innerHTML=selected?.regions?.length?selected.regions.slice(0,12).map(r=>`<div class="region"><b>${r.acronym}</b><span>${r.name}</span><span>${(r.fraction*100).toFixed(1)}%</span></div>`).join(''):'<div class="empty">Select or draw a polygon</div>';
+  $('provenance').innerHTML=`<dt>Project</dt><dd>${state.project.project_id}</dd><dt>Slide</dt><dd>${state.slideId}</dd><dt>Source hash</dt><dd>${meta.sha256?.slice(0,16)||'unavailable'}…</dd><dt>Atlas</dt><dd>${state.atlas.id}</dd><dt>Plane</dt><dd>AP ${s.apIndex}, yaw ${s.yaw}°, pitch ${s.pitch}°</dd><dt>Review</dt><dd>${s.reviewed?'complete':meta.review_required?'required':'pending'}</dd>`;
+  document.querySelectorAll('.annotation').forEach(el=>el.onclick=e=>{if(e.target.dataset.delete){S().annotations=S().annotations.filter(a=>a.id!==e.target.dataset.delete);state.selectedAnnotation=null;markDirty();drawAnnotations();renderLists()}else{state.selectedAnnotation=el.dataset.id;drawAnnotations();renderLists()}})}
+
+async function autoAlign(){const s=S();if(!s.crop){toast('Draw a crop around one tissue section first');return}$('autoButton').disabled=true;$('autoResult').textContent='Testing nearby atlas planes…';try{const body={slide_id:state.slideId,crop:s.crop,ap_index:s.apIndex,yaw_deg:s.yaw,pitch_deg:s.pitch,width:CW,height:CH,hemisphere:s.hemisphere,boundaries:true,search_radius:12,search_step:3,allow_flip:true};const out=await (await api('/api/auto-align',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();s.apIndex=out.best.ap_index;s.flipped=out.best.flipped;s.autoWarp=out.best.warp;s.manual={tx:0,ty:0,rotation:0,scale:1};syncControls();markDirty();await loadAtlas();drawSource();$('autoResult').innerHTML=`Advisory score <b>${out.best.score.toFixed(3)}</b> · AP ${out.best.ap_index}${out.best.flipped?' · flipped':''}. Correct with landmarks.`}catch(e){toast(e.message);$('autoResult').textContent='Suggestion failed; align with landmarks.'}finally{$('autoButton').disabled=false}}
+
+async function save(){const sourceProvenance=Object.fromEntries(state.project.slides.map(s=>[s.id,{display_sha256:s.sha256,source_files:s.source_file_records||[]}])) ;const payload={app_version:'0.1.0',project_id:state.project.project_id,atlas:state.atlas,source_provenance:sourceProvenance,slides:state.slides,active_slide:state.slideId};const label=$('revisionLabel').value.trim()||'manual_review';const out=await (await api('/api/revisions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:payload,label})})).json();state.dirty=false;$('saveStatus').textContent=`Saved ${new Date(out.saved_at).toLocaleTimeString()}`;toast(`Saved immutable revision ${out.filename}`)}
+async function showRevisions(){const rows=await (await api('/api/revisions')).json();$('revisionList').innerHTML=rows.length?rows.map(r=>`<div class="revision"><div><b>${r.label}</b><small>${new Date(r.saved_at).toLocaleString()}</small></div><button data-load="${r.filename}">Load</button></div>`).join(''):'<div class="empty">No saved revisions</div>';document.querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>loadRevision(b.dataset.load));$('loadDialog').showModal()}
+async function loadRevision(file){const rec=await (await api(`/api/revisions/${encodeURIComponent(file)}`)).json();state.slides=rec.state.slides||{};state.dirty=false;const saved=rec.state.source_provenance||{},mismatches=state.project.slides.filter(s=>saved[s.id]?.display_sha256&&saved[s.id].display_sha256!==s.sha256).map(s=>s.id);$('saveStatus').textContent=mismatches.length?`SOURCE HASH MISMATCH (${mismatches.length})`:`Loaded ${rec.label}`;$('loadDialog').close();await selectSlide(rec.state.active_slide||state.slideId);toast(mismatches.length?`Warning: source images changed for ${mismatches.join(', ')}`:'Revision loaded. Your source files were not changed.')}
+function armReset(button,action){if(button.dataset.armed!=='yes'){button.dataset.armed='yes';button.dataset.original=button.textContent;button.textContent='Click again to confirm';setTimeout(()=>{if(button.dataset.armed==='yes'){button.dataset.armed='';button.textContent=button.dataset.original}},4000);return}button.dataset.armed='';button.textContent=button.dataset.original;action()}
+function resetSlide(){armReset($('resetSlide'),()=>{state.slides[state.slideId]=blankSlide();const meta=state.project.slides.find(x=>x.id===state.slideId);state.slides[state.slideId].apIndex=meta.atlas_ap_index_hint??Math.floor(state.atlas.shape[0]/2);markDirty();selectSlide(state.slideId)})}
+function resetAll(){armReset($('resetAll'),()=>{state.slides={};state.selectedAnnotation=null;markDirty();selectSlide(state.slideId)})}
+function exportCsv(){const rows=[['registration_unit','physical_slide','piece_code','registration_reviewed','atlas_id','ap_index','yaw_deg','pitch_deg','region_id','acronym','region_name','fraction','vertices']];for(const [slideId,s] of Object.entries(state.slides)){const meta=state.project.slides.find(x=>x.id===slideId)||{};for(const a of s.annotations||[])for(const r of a.regions||[])rows.push([slideId,meta.physical_slide||'',a.code,!!s.reviewed,a.plane?.atlas_id||state.atlas.id,a.plane?.ap_index??s.apIndex,a.plane?.yaw_deg??s.yaw,a.plane?.pitch_deg??s.pitch,r.id,r.acronym,r.name,r.fraction,JSON.stringify(a.points)])}const csv=rows.map(row=>row.map(x=>`"${String(x??'').replaceAll('"','""')}"`).join(',')).join('\n');const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),a=document.createElement('a');a.href=u;a.download=`${state.project.project_id}_atlas_regions.csv`;a.click();URL.revokeObjectURL(u)}
+
+['apSlider','apNumber','yaw','pitch','hemisphere','sourceFlip','opacity','tx','ty','rotation','scale'].forEach(id=>$(id).addEventListener('input',controlChanged));
+$('reviewToggle').onchange=e=>{S().reviewed=e.target.checked;S().registrationStatus=e.target.checked?'manually_reviewed':'unreviewed';markDirty();renderLists()};
+$('slideSelect').onchange=e=>selectSlide(e.target.value);$('cropButton').onclick=()=>setMode('crop');$('landmarkButton').onclick=()=>setMode('landmark');$('polygonButton').onclick=()=>setMode('polygon');$('fitButton').onclick=fitLandmarks;$('clearLandmarks').onclick=()=>{S().landmarks={source:[],atlas:[]};markDirty();drawSource();drawAnnotations()};$('clearCropButton').onclick=()=>{S().crop=null;S().autoWarp=null;markDirty();drawSource();drawAtlas()};$('autoButton').onclick=autoAlign;$('saveButton').onclick=()=>save().catch(e=>toast(e.message));$('loadButton').onclick=()=>showRevisions().catch(e=>toast(e.message));$('closeDialog').onclick=()=>$('loadDialog').close();$('resetSlide').onclick=resetSlide;$('resetAll').onclick=resetAll;$('exportButton').onclick=exportCsv;
+window.addEventListener('keydown',e=>{if(e.key==='Enter'&&state.mode==='polygon'&&state.draftPolygon?.length){e.preventDefault();finishPolygon()}if((e.metaKey||e.ctrlKey)&&e.key==='s'){e.preventDefault();save().catch(x=>toast(x.message))}});window.addEventListener('beforeunload',e=>{if(state.dirty){e.preventDefault();e.returnValue=''}});
+init().catch(e=>{console.error(e);toast(e.message);$('saveStatus').textContent='Startup error'});

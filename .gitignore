@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.DS_Store
+
+# Experimental data and registration outputs must stay local.
+data/
+projects/
+*.tif
+*.tiff
+*.nd2
+*.czi
+*.xlsx
+*.pptx
+
